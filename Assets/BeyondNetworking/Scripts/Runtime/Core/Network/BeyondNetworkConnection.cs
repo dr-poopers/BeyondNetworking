@@ -1,0 +1,90 @@
+using Riptide;
+using Riptide.Transports;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Beyond.Networking
+{
+    public static partial class BeyondNetwork
+    {
+        public static ServerData CurrentServer;
+        public static void CreateServer(string name, string[] properties, ushort maxClients = 0, bool asHost = true, ushort port = 7777) {          
+            if (maxClients < 1)
+                maxClients = BeyondSettings.Settings.MaxClients;
+            if (name.Length < 1)
+                name = $"{BeyondSettings.Settings.ServerName}{BeyondSettings.Settings.ServerName.GetHashCode()}";
+            Mono.Server.Start(port, maxClients);
+            CurrentServer = new ServerData(name, maxClients, properties);
+            if (asHost)
+                JoinServer("127.0.0.1", 7777);
+        }
+        public static ClientRef LocalClient;
+        public static void JoinServer(string address) {
+            Message connectMessage = Message.Create();
+            connectMessage.AddString(NickName);
+            connectMessage.AddString(UserId);
+            Mono.Client.Connect(address, BeyondSettings.Settings.MaxConnectionAttempts, 0, connectMessage);
+        }
+        public static string NickName;
+        public static string UserId;
+        public static void JoinServer(string address, ushort port = 7777) {
+            JoinServer($"{address}:{port}");
+        }
+
+        [MessageHandler((ushort)MessageHeader.Connect)]
+        internal static void ConnectedHandler(ushort fromClientId, Message message) {
+            ClientRef newClientRef = new();
+            newClientRef.Nickname = message.GetString();
+            newClientRef.UserId = message.GetString();
+            newClientRef.ActorNumber = fromClientId;
+            newClientRef.IsHost = newClientRef.GetConnection() == Mono.Client.Connection;
+            CurrentServer.Clients.Add(newClientRef);
+            UpdateServerData();
+        }
+
+        public static void UpdateServerData() {
+            var message = Message.Create(MessageSendMode.Reliable, Messages.ServerDataMessage);
+            message.AddSerializable(CurrentServer);
+            Mono.Server.SendToAll(message);
+        }
+
+        [MessageHandler((ushort)Messages.ServerDataMessage)]
+        internal static void ServerDataUpdatedHandler(Message message) {
+            if (Mono.Server.IsRunning)
+                return;
+            CurrentServer = message.GetSerializable<ServerData>();
+        }
+    }
+
+    [Serializable]
+    public struct ServerData : IMessageSerializable {
+        public string Name;
+        public uint MaxClients;
+        public List<ClientRef> Clients;
+        public string[] CustomProperties {
+            get; set;
+        }
+
+        public ServerData(string name, uint maxClients, string[] properties) {
+            Name = name;
+            MaxClients = maxClients;
+            CustomProperties = properties;
+            Clients = new List<ClientRef>();
+        }
+
+        public void Serialize(Message message) {
+            message.AddString(Name);
+            message.AddUInt(MaxClients);
+            message.AddStrings(CustomProperties);
+            message.AddString(JsonUtility.ToJson(CustomProperties));
+        }
+
+        public void Deserialize(Message message) {
+            Name = message.GetString();
+            MaxClients = message.GetUInt();
+            CustomProperties = message.GetStrings();
+            Clients = JsonUtility.FromJson<List<ClientRef>>(message.GetString());
+        }
+    }
+}
