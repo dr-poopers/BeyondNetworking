@@ -15,11 +15,11 @@ namespace Beyond.Networking
         public bool IsMine => Owner.GetConnection() == BeyondNetwork.Mono.Client.Connection;
         public IObservable[] Observables = new();
         
-        public void RPC(Component component, string methodName, RpcTarget target, bool buffered = false, params object[] parameters = null){
+        public void RPC(IObservable component, string methodName, RpcTarget target, bool buffered = false, params object[] parameters = null){
         
         }
 
-        public void RPC(Component component, string methodName, ClientRef player, params object[] parameters = null){
+        public void RPC(IObservable component, string methodName, ClientRef player, params object[] parameters = null){
         
         }
         
